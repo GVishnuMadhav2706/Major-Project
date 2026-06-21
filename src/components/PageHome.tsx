@@ -1,6 +1,6 @@
 import { useState, FormEvent } from 'react';
 import { Customer, PlanType, ContractType } from '../types';
-import { predictChurn } from '../utils/churnLogic';
+import { predictChurn, generateUniqueIndianName } from '../utils/churnLogic';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Users, 
@@ -16,7 +16,9 @@ import {
   Sparkles,
   ArrowRight,
   TrendingDown,
-  Trash2
+  Trash2,
+  Database,
+  LogIn
 } from 'lucide-react';
 
 interface PageHomeProps {
@@ -24,13 +26,17 @@ interface PageHomeProps {
   onSaveCustomer: (customer: Customer) => void;
   onDeleteCustomer: (id: string) => void;
   cloudSynced: boolean;
+  onConnectCloudDatabase?: () => void;
+  user?: any;
 }
 
 export default function PageHome({ 
   customers, 
   onSaveCustomer, 
   onDeleteCustomer,
-  cloudSynced 
+  cloudSynced,
+  onConnectCloudDatabase,
+  user
 }: PageHomeProps) {
   // --- Prediction Tool Form State ---
   const [tenure, setTenure] = useState(12);
@@ -92,7 +98,7 @@ export default function PageHome({
   const handleAddSubscriber = (e: FormEvent) => {
     e.preventDefault();
     const cleanId = 'TEL-' + Math.floor(100000 + Math.random() * 900000);
-    const finalName = name.trim() || `Subscriber-${Math.floor(1000 + Math.random() * 9000)}`;
+    const finalName = name.trim() || generateUniqueIndianName(customers.map(c => c.name));
 
     // Prevent duplicate name if name matches exactly (case insensitive)
     const exists = customers.some(c => c.name.toLowerCase() === finalName.toLowerCase());
@@ -152,6 +158,31 @@ export default function PageHome({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Sync database prompt banner */}
+      {!user && onConnectCloudDatabase && (
+        <div className="bg-slate-900/60 border border-amber-500/10 hover:border-amber-500/25 p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all duration-300 relative overflow-hidden shadow-xl">
+          <div className="absolute top-0 right-0 w-48 h-48 bg-amber-500/2 rounded-full blur-2xl pointer-events-none" />
+          <div className="flex items-start gap-3">
+            <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-xl mt-0.5 shrink-0">
+              <Database className="w-4.5 h-4.5" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-slate-100">Connect Cloud Database</h4>
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                Unlock direct cloud logging, remote bucket storage, and historical synchronized analysis. Connect safely to your live Supabase database with pre-filled test credentials.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onConnectCloudDatabase}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-350 hover:shadow-lg hover:shadow-amber-500/10 rounded-xl transition cursor-pointer shrink-0"
+          >
+            <LogIn className="w-3.5 h-3.5 shrink-0" />
+            <span>Connect Cloud Database</span>
+          </button>
+        </div>
+      )}
 
       {/* --- Main summary metrics cards --- */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -231,14 +262,23 @@ export default function PageHome({
             <form onSubmit={handleAddSubscriber} className="space-y-5">
               {/* Optional Name (Useful if adding to telemetry registry) */}
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
-                  Optional Subscriber Name
-                </label>
+                <div className="flex justify-between items-center mb-1.5">
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    Subscriber Name
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setName(generateUniqueIndianName(customers.map(c => c.name)))}
+                    className="text-[10px] font-bold text-blue-400 hover:text-blue-350 bg-blue-500/10 border border-blue-500/20 hover:border-blue-500/30 px-2 py-0.5 rounded transition cursor-pointer"
+                  >
+                    Suggest Indian Name
+                  </button>
+                </div>
                 <input
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Johnathan Doe"
+                  placeholder="e.g. Aarav Sharma (or leave blank for auto-generate)"
                   className="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-slate-700 transition"
                 />
               </div>

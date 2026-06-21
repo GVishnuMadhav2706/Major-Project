@@ -10,8 +10,8 @@ interface AuthModalProps {
 
 export default function AuthModal({ onClose, onAuthSuccess }: AuthModalProps) {
   const [isSignUp, setIsSignUp] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('admin@test.com');
+  const [password, setPassword] = useState('123456');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -219,6 +219,24 @@ with check (auth.uid() = user_id);`;
                 className="w-full bg-slate-950 border border-slate-800 focus:border-slate-750 focus:outline-none text-slate-200 text-sm pl-10 pr-4 py-3 rounded-xl transition"
               />
             </div>
+          </div>
+
+          {/* Quick-fill credentials helper snippet */}
+          <div className="bg-slate-950/80 border border-slate-850 p-3 rounded-xl flex items-center justify-between gap-3 text-xs">
+            <div className="text-left font-sans text-slate-400 text-[11px]">
+              <span className="font-bold text-slate-300 block">⚡ Testing Quick-Fill</span>
+              Credentials: <code className="text-blue-300">admin@test.com</code> / <code className="text-blue-300">123456</code>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setEmail('admin@test.com');
+                setPassword('123456');
+              }}
+              className="px-2.5 py-1.5 text-[10px] font-bold hover:bg-slate-850 text-blue-400 border border-blue-500/10 hover:border-blue-500/30 rounded-lg transition shrink-0 cursor-pointer"
+            >
+              Fill Coordinates
+            </button>
           </div>
 
           {/* Submit button */}

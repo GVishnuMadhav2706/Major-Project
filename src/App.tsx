@@ -289,6 +289,8 @@ export default function App() {
                   onSaveCustomer={handleSaveCustomer}
                   onDeleteCustomer={handleDeleteCustomer}
                   cloudSynced={cloudSynced}
+                  onConnectCloudDatabase={() => setAuthModalOpen(true)}
+                  user={user}
                 />
               </motion.div>
             ) : (
@@ -297,6 +299,8 @@ export default function App() {
                   customers={customers}
                   onDeleteCustomer={handleDeleteCustomer}
                   onSaveCustomer={handleSaveCustomer}
+                  onConnectCloudDatabase={() => setAuthModalOpen(true)}
+                  user={user}
                 />
               </motion.div>
             )}
