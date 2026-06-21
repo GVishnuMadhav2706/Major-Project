@@ -268,19 +268,110 @@ export default function PageHome({
                   </label>
                   <button
                     type="button"
-                    onClick={() => setName(generateUniqueIndianName(customers.map(c => c.name)))}
+                    onClick={() => {
+                      const suggName = generateUniqueIndianName(customers.map(c => c.name));
+                      setName(suggName);
+                    }}
                     className="text-[10px] font-bold text-blue-400 hover:text-blue-350 bg-blue-500/10 border border-blue-500/20 hover:border-blue-500/30 px-2 py-0.5 rounded transition cursor-pointer"
                   >
                     Suggest Indian Name
                   </button>
                 </div>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Aarav Sharma (or leave blank for auto-generate)"
-                  className="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-slate-700 transition"
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setName(val);
+                      // Check real-time exact case-insensitive match
+                      const match = customers.find(c => c.name.toLowerCase() === val.trim().toLowerCase());
+                      if (match) {
+                        setTenure(match.tenure);
+                        setMonthlyUsage(match.monthlyUsage);
+                        setMonthlySpend(match.rechargeAmount);
+                        setSupportCalls(match.supportCalls);
+                        setPlanType(match.planType);
+                        setContractType(match.contractType);
+                      }
+                    }}
+                    placeholder="e.g. Aarav Sharma (or leave blank for auto-generate)"
+                    className="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-slate-700 transition"
+                  />
+                  
+                  {/* Real-time search suggestions dropdown as they type */}
+                  {name.trim() !== '' && (
+                    (() => {
+                      const filtered = customers.filter(c => 
+                        c.name.toLowerCase().includes(name.toLowerCase())
+                      );
+                      const isExactMatch = customers.some(c => 
+                        c.name.toLowerCase() === name.trim().toLowerCase()
+                      );
+
+                      if (filtered.length > 0 && !isExactMatch) {
+                        return (
+                          <div className="absolute left-0 right-0 mt-1 bg-slate-950 border border-slate-800 rounded-xl overflow-hidden max-h-48 overflow-y-auto divide-y divide-slate-900 shadow-2xl z-20">
+                            <div className="bg-slate-900 px-3 py-1.5 text-[9px] text-slate-400 font-bold uppercase tracking-wider flex items-center justify-between">
+                              <span>Match in Registry ({filtered.length})</span>
+                              <span className="text-blue-400 animate-pulse">Click to load profile</span>
+                            </div>
+                            {filtered.map((cust) => (
+                              <button
+                                key={cust.id}
+                                type="button"
+                                onClick={() => {
+                                  setName(cust.name);
+                                  setTenure(cust.tenure);
+                                  setMonthlyUsage(cust.monthlyUsage);
+                                  setMonthlySpend(cust.rechargeAmount);
+                                  setSupportCalls(cust.supportCalls);
+                                  setPlanType(cust.planType);
+                                  setContractType(cust.contractType);
+                                }}
+                                className="w-full text-left px-3.5 py-2 hover:bg-slate-900/80 transition flex items-center justify-between text-xs"
+                              >
+                                <div>
+                                  <p className="font-semibold text-slate-200">{cust.name}</p>
+                                  <p className="text-[10px] text-slate-500">
+                                    {cust.planType} • {cust.tenure} m • ${cust.rechargeAmount}/mo
+                                  </p>
+                                </div>
+                                <span className="text-[9px] px-2 py-0.5 rounded bg-blue-500/20 border border-blue-500/30 text-blue-400 font-bold uppercase shrink-0">
+                                  Load
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()
+                  )}
+                </div>
+
+                {/* Profile loaded metadata indicator */}
+                {(() => {
+                  const match = customers.find(c => c.name.toLowerCase() === name.trim().toLowerCase());
+                  if (match) {
+                    return (
+                      <div className="mt-2.5 p-2.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl text-xs flex items-center justify-between">
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                          <span>Linked to <strong>{match.name}</strong> ({match.planType} profile)</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setName('')}
+                          className="text-[10px] font-bold text-slate-400 hover:text-slate-200 hover:underline uppercase"
+                        >
+                          Reset
+                        </button>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
 
               {/* Grid selectors for Plan & Contract defaults */}
