@@ -1,230 +1,332 @@
 import { useState, useEffect } from 'react';
 import { Customer } from './types';
-import { INITIAL_CUSTOMERS, calculateStats } from './utils/churnLogic';
-import MetricCard from './components/MetricCard';
-import ChurnCharts from './components/ChurnCharts';
-import CustomerForm from './components/CustomerForm';
-import CustomerTable from './components/CustomerTable';
+import { INITIAL_CUSTOMERS } from './utils/churnLogic';
+import { supabase } from './supabaseClient';
+import { getDurableCustomers, saveDurableCustomer, deleteDurableCustomer } from './utils/supabaseDb';
+import AuthModal from './components/AuthModal';
+import PageHome from './components/PageHome';
+import PageDetails from './components/PageDetails';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  Users, 
-  Percent, 
-  ShieldAlert, 
-  Calendar, 
-  Activity, 
-  HelpCircle, 
   RefreshCw, 
-  PlusCircle, 
-  Info,
-  Layers
+  Layers,
+  LogIn,
+  Database,
+  CloudLightning,
+  Sparkles,
+  LayoutDashboard,
+  ShieldCheck,
+  PhoneCall,
+  UserCheck
 } from 'lucide-react';
 
 export default function App() {
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [showWelcomeBanner, setShowWelcomeBanner] = useState(true);
+  const [currentPage, setCurrentPage] = useState<'home' | 'details'>('home');
+  
+  // Supabase Auth and Sync States
+  const [user, setUser] = useState<any>(null);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
+  const [cloudSynced, setCloudSynced] = useState(false);
 
-  // Seed the initial data on mount
+  // Monitor Supabase session states on load
   useEffect(() => {
-    setCustomers(INITIAL_CUSTOMERS);
+    // Resolve logged in identity
+    supabase.auth.getUser().then(({ data: { user: sessionUser } }) => {
+      if (sessionUser) {
+        setUser(sessionUser);
+      }
+    });
+
+    // Setup reactive subscriber callback
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      if (!session?.user) {
+        setCloudSynced(false);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
-  // Compute stats on fly based on active state grid
-  const stats = calculateStats(customers);
+  // Fetch or Synchronize subscribers whenever active user changes
+  useEffect(() => {
+    let active = true;
 
-  // Save (Create or Update) customer logic
-  const handleSaveCustomer = (savedCustomer: Customer) => {
+    async function loadCustomers() {
+      const userId = user ? user.id : null;
+      const response = await getDurableCustomers(userId);
+      
+      if (!active) return;
+
+      if (response.data.length > 0) {
+        setCustomers(response.data);
+      } else {
+        // Fallback to baseline default list
+        setCustomers(INITIAL_CUSTOMERS);
+      }
+
+      setCloudSynced(response.fromDb);
+      
+      if (response.error) {
+        setSyncNotice(response.error);
+      } else if (userId) {
+        setSyncNotice(`Connected securely to Supabase. Loaded ${response.data.length || INITIAL_CUSTOMERS.length} subscribers.`);
+      } else {
+        setSyncNotice(null);
+      }
+    }
+
+    loadCustomers();
+
+    return () => {
+      active = false;
+    };
+  }, [user]);
+
+  // Save (Create or Update) customer logic to support dynamic updates from both PageHome and PageDetails
+  const handleSaveCustomer = async (savedCustomer: Customer) => {
+    // 1. Update local UI state immediately for responsive feedback
     setCustomers((prev) => {
       const exists = prev.some((c) => c.id === savedCustomer.id);
       if (exists) {
-        // Update existing item
         return prev.map((c) => (c.id === savedCustomer.id ? savedCustomer : c));
       } else {
-        // Create new item
         return [savedCustomer, ...prev];
       }
     });
-    
-    // Clear selection state after commitment
-    setSelectedCustomer(null);
+
+    // 2. Persist to cloud/local adapter
+    const userId = user ? user.id : null;
+    const result = await saveDurableCustomer(savedCustomer, userId);
+
+    setCloudSynced(result.fromDb);
+    if (result.error) {
+      setSyncNotice(result.error);
+    } else if (userId) {
+      setSyncNotice(`Subscriber "${savedCustomer.name}" cloud syncing successful.`);
+    }
   };
 
   // Delete customer record logic
-  const handleDeleteCustomer = (id: string) => {
+  const handleDeleteCustomer = async (id: string) => {
+    // 1. Update local UI state
     setCustomers((prev) => prev.filter((c) => c.id !== id));
-    if (selectedCustomer && selectedCustomer.id === id) {
-      setSelectedCustomer(null);
+
+    // 2. Purge from storage
+    const userId = user ? user.id : null;
+    const result = await deleteDurableCustomer(id, userId);
+
+    if (result.error) {
+      setSyncNotice(`Cloud deletion fail: ${result.error}`);
+    } else if (userId) {
+      setSyncNotice('Subscriber purged from database successfully.');
     }
   };
 
   // Re-seed original dataset
-  const resetDemoState = () => {
-    setCustomers(INITIAL_CUSTOMERS);
-    setSelectedCustomer(null);
+  const resetDemoState = async () => {
+    if (confirm("Reset subscriber register back to database defaults? Any unsaved telemetry will be overwritten.")) {
+      setCustomers(INITIAL_CUSTOMERS);
+      
+      const userId = user ? user.id : null;
+      if (userId) {
+        setSyncNotice('Re-synchronizing cloud storage. Pushing default subscriber templates to Supabase...');
+        for (const item of INITIAL_CUSTOMERS) {
+          await saveDurableCustomer(item, userId);
+        }
+        setSyncNotice('Cloud sample database restore completed.');
+      } else {
+        setSyncNotice('Local storage demo baseline restored.');
+      }
+    }
   };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 selection:bg-blue-500/30 selection:text-blue-200">
-      {/* Decorative top illumination lines */}
-      <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-linear-to-r from-transparent via-blue-500 to-transparent opacity-60" />
+      {/* Decorative top illumination lines and background gradients */}
+      <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-linear-to-r from-transparent via-blue-500 to-transparent opacity-60 pointer-events-none" />
       <div className="absolute top-0 right-1/4 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute top-1/3 left-1/4 w-96 h-96 bg-indigo-500/2 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-1/3 left-1/4 w-96 h-96 bg-indigo-505/2 rounded-full blur-3xl pointer-events-none" />
 
-      {/* Main dashboard wrapper */}
-      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col gap-8">
+      {/* Main dashboard container layout */}
+      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col gap-6">
         
         {/* Navigation & Header */}
-        <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900/40 border border-slate-900 p-5 rounded-2xl shadow-lg backdrop-blur-md">
+        <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-5 bg-slate-900/60 border border-slate-900 p-5 rounded-2xl shadow-xl backdrop-blur-md">
           <div className="flex items-center gap-3">
-            <div className="p-3 bg-linear-to-br from-rose-500 to-indigo-600 rounded-xl shadow-inner text-slate-950 shrink-0">
-              <Layers className="w-6 h-6 text-slate-100" />
+            <div className="p-3 bg-linear-to-br from-indigo-500 to-blue-600 rounded-2xl shadow-inner text-slate-50 shrink-0">
+              <Layers className="w-5 h-5 text-slate-5" />
             </div>
             <div>
-              <h1 className="text-xl font-extrabold tracking-neutral font-sans text-slate-50 flex items-center gap-2">
-                Predictive Analytics
-                <span className="text-[10px] font-mono border border-blue-500/20 text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded uppercase tracking-wider">
-                  Telco Churn
-                </span>
+              <h1 className="text-lg font-extrabold tracking-tight font-sans text-slate-50 flex items-center flex-wrap gap-2">
+                Telecom Customer Churn Prediction
+                {cloudSynced && (
+                  <span className="text-[10px] font-bold border border-emerald-500/25 text-emerald-400 bg-emerald-500/5 px-2.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-1">
+                    <Database className="w-2.5 h-2.5" />
+                    Live Supabase SQL Sync
+                  </span>
+                )}
               </h1>
-              <span className="text-xs text-slate-400 font-medium">
-                AI Studio Telecom Customer Defection Classification System
+              <span className="text-xs text-slate-405 font-medium">
+                Analysis workspace powered by interactive prediction classifiers
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Seed Restore Button */}
             <button
               onClick={resetDemoState}
-              className="group flex items-center gap-2 px-3.5 py-2 text-xs font-semibold bg-slate-950 border border-slate-800 rounded-xl hover:border-slate-700 hover:text-slate-200 transition cursor-pointer text-slate-400"
-              title="Restore baseline sample subscriber records to run clean simulations."
+              className="group flex items-center gap-2 px-3.5 py-2 text-xs font-semibold bg-slate-950 border border-slate-850 rounded-xl hover:border-slate-800 hover:text-slate-200 transition cursor-pointer text-slate-400"
+              title="Restore baseline sample subscriber records."
             >
               <RefreshCw className="w-3.5 h-3.5 group-hover:rotate-180 transition-transform duration-500" />
               <span>Reset Sample Base</span>
             </button>
-            <div className="flex items-center gap-1.5 px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-[11px] font-bold text-emerald-400">
+
+            {/* Supabase user authentication status */}
+            {user ? (
+              <div className="flex items-center gap-3 bg-slate-950 border border-slate-850 rounded-xl px-3.5 py-1.5 font-sans">
+                <div className="text-left">
+                  <span className="block text-[8px] font-bold text-slate-500 uppercase tracking-widest leading-none">Cloud User</span>
+                  <span className="block text-[11px] text-blue-300 font-bold max-w-[120px] truncate mt-0.5" title={user.email}>
+                    {user.email}
+                  </span>
+                </div>
+                <div className="w-0.5 h-6 bg-slate-850 shrink-0" />
+                <button
+                  onClick={async () => {
+                    await supabase.auth.signOut();
+                    setSyncNotice('Session terminated successfully. Offline mode active.');
+                  }}
+                  className="text-[10px] font-bold text-rose-450 hover:text-rose-400 border border-rose-500/10 hover:border-rose-500/30 bg-rose-500/5 px-2.5 py-1 rounded-lg transition shrink-0 cursor-pointer"
+                >
+                  Sign Out
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setAuthModalOpen(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold bg-blue-400 hover:bg-blue-350 text-slate-950 rounded-xl transition cursor-pointer shadow-lg shadow-blue-500/5"
+              >
+                <LogIn className="w-3.5 h-3.5 shrink-0" />
+                <span>Cloud Account Sync</span>
+              </button>
+            )}
+
+            {/* Status indicator */}
+            <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 bg-slate-950 border border-slate-850 rounded-xl text-[10px] font-bold text-emerald-400">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>SYSTEM ONLINE</span>
+              <span>ONLINE</span>
             </div>
           </div>
         </header>
 
-        {/* Welcome Interactive Guide Banner */}
+        {/* Sync message alert notification banner */}
         <AnimatePresence>
-          {showWelcomeBanner && (
+          {syncNotice && (
             <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              className="overflow-hidden bg-linear-to-r from-blue-950/20 to-indigo-950/20 border border-blue-800/20 rounded-2xl shadow-lg relative p-5 flex flex-col md:flex-row md:items-center justify-between gap-5"
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="bg-slate-900 border border-slate-800 rounded-2xl px-5 py-3 text-xs text-slate-400 font-sans flex items-center justify-between gap-4"
             >
-              <div className="flex items-start gap-3.5">
-                <div className="p-2.5 bg-blue-500/10 border border-blue-500/20 rounded-xl text-blue-400 shrink-0 mt-0.5">
-                  <Info className="w-5 h-5" />
-                </div>
-                <div className="font-sans text-xs">
-                  <h4 className="font-bold text-slate-200 text-sm tracking-wide mb-1">
-                    How Churn Prediction Works
-                  </h4>
-                  <p className="text-slate-400 leading-relaxed max-w-3xl">
-                    High support frequency, short tenure lengths, and unanchored (month-to-month) billing structures act as primary triggers that multiply a subscriber's churn hazard. 
-                    <strong className="text-blue-400 font-semibold"> To test the classification engine: </strong> Click any subscriber's <span className="text-amber-400 font-semibold">'Simulation'</span> button in the active table below. Their metrics will slide into the live workspace where you can manipulate service properties to observe Defection Risk fluctuation instantaneously!
-                  </p>
-                </div>
+              <div className="flex items-center gap-2.5">
+                {cloudSynced ? (
+                  <Database className="w-4 h-4 text-emerald-400 shrink-0" />
+                ) : (
+                  <CloudLightning className="w-4 h-4 text-amber-500 shrink-0" />
+                )}
+                <span>{syncNotice}</span>
               </div>
-              <button
-                onClick={() => setShowWelcomeBanner(false)}
-                className="text-[10px] font-bold text-slate-500 hover:text-slate-350 tracking-wider uppercase border border-slate-800/40 hover:border-slate-800 rounded-lg px-2.5 py-1.5 transition whitespace-nowrap align-self-start cursor-pointer md:align-self-center"
+              <button 
+                onClick={() => setSyncNotice(null)} 
+                className="text-[10px] font-bold tracking-wider text-slate-500 hover:text-slate-350 transition uppercase cursor-pointer"
               >
-                Dismiss Guide
+                Dismiss
               </button>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Section 1: KPI Stat Grid Cards */}
-        <div id="stats-widget" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <MetricCard
-            title="Total Subscribers Base"
-            value={stats.totalCustomers}
-            subtitle="Current tracked telemetry cohort"
-            icon={<Users className="w-5 h-5 text-blue-400" />}
-            trend={{ text: 'Sync Active', type: 'neutral' }}
-            highlightColor="border-blue-500/10"
-          />
-          <MetricCard
-            title="Average Retention Index"
-            value={`${stats.churnRate}%`}
-            subtitle="Aggregate defection rate prediction"
-            icon={<Percent className="w-5 h-5 text-rose-500" />}
-            trend={
-              stats.churnRate >= 45 
-                ? { text: 'Elevated Hazard', type: 'negative' } 
-                : { text: 'Healthy Index', type: 'positive' }
-            }
-            highlightColor={stats.churnRate >= 45 ? 'border-rose-500/15' : 'border-slate-800'}
-          />
-          <MetricCard
-            title="Acute Threat Count"
-            value={stats.highRiskCount}
-            subtitle="Users with risk indexes exceeding 75%"
-            icon={<ShieldAlert className="w-5 h-5 text-rose-450" />}
-            trend={
-              stats.highRiskCount > 2
-                ? { text: 'Friction Warning', type: 'negative' }
-                : { text: 'Stable Margins', type: 'positive' }
-            }
-            highlightColor={stats.highRiskCount > 2 ? 'border-amber-500/15 animate-pulse' : 'border-slate-800'}
-          />
-          <MetricCard
-            title="Avg Account Longevity"
-            value={`${stats.averageTenure} mo`}
-            subtitle="Average subscriber tenure duration"
-            icon={<Calendar className="w-5 h-5 text-teal-400" />}
-            trend={{ text: 'Loyalty anchor', type: 'neutral' }}
-            highlightColor="border-teal-500/10"
-          />
-        </div>
+        {/* Tab Navigation Area - 2-Page Structure split */}
+        <nav className="flex items-center justify-start p-1.5 bg-slate-900/60 border border-slate-900 rounded-2xl max-w-md gap-1">
+          <button
+            onClick={() => setCurrentPage('home')}
+            className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 text-xs font-bold rounded-xl transition cursor-pointer ${
+              currentPage === 'home' 
+                ? 'bg-blue-500/10 border border-blue-500/20 text-blue-400' 
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-950/40'
+            }`}
+          >
+            <LayoutDashboard className="w-4 h-4" />
+            <span>Home (Analysis Dashboard)</span>
+          </button>
+          <button
+            onClick={() => setCurrentPage('details')}
+            className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 text-xs font-bold rounded-xl transition cursor-pointer ${
+              currentPage === 'details' 
+                ? 'bg-blue-500/10 border border-blue-500/20 text-blue-400' 
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-950/40'
+            }`}
+          >
+            <UserCheck className="w-4 h-4" />
+            <span>Customer Details</span>
+          </button>
+        </nav>
 
-        {/* Section 2: Interactive SVG Visual charts */}
-        <section className="bg-slate-950 p-1 border border-transparent rounded-2xl">
-          <ChurnCharts customers={customers} />
-        </section>
-
-        {/* Section 3: Primary Split Workshop UI Workspace */}
-        <section className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
-          
-          {/* Form / Live Simulator (xl:col-span-5) */}
-          <div className="xl:col-span-5 w-full">
-            <CustomerForm
-              selectedCustomer={selectedCustomer}
-              onSave={handleSaveCustomer}
-              onClearSelection={() => setSelectedCustomer(null)}
-            />
-          </div>
-
-          {/* Table Directory (xl:col-span-7) */}
-          <div className="xl:col-span-7 w-full">
-            <CustomerTable
-              customers={customers}
-              selectedCustomerId={selectedCustomer ? selectedCustomer.id : null}
-              onSelectCustomer={setSelectedCustomer}
-              onDeleteCustomer={handleDeleteCustomer}
-            />
-          </div>
-
-        </section>
+        {/* Primary Page views */}
+        <main className="min-h-[50vh]">
+          <AnimatePresence mode="wait">
+            {currentPage === 'home' ? (
+              <motion.div key="home-page" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}>
+                <PageHome 
+                  customers={customers}
+                  onSaveCustomer={handleSaveCustomer}
+                  onDeleteCustomer={handleDeleteCustomer}
+                  cloudSynced={cloudSynced}
+                />
+              </motion.div>
+            ) : (
+              <motion.div key="details-page" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}>
+                <PageDetails 
+                  customers={customers}
+                  onDeleteCustomer={handleDeleteCustomer}
+                  onSaveCustomer={handleSaveCustomer}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </main>
         
         {/* Humble and Clean footer layout */}
-        <footer className="mt-8 border-t border-slate-900 pt-6 pb-2 text-center font-mono text-[10px] text-slate-600 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <footer className="mt-6 border-t border-slate-900 pt-6 pb-2 text-center font-mono text-[10px] text-slate-600 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            System build Version 1.4.3 • Evaluates linear friction risks using weighted heuristic calculations.
+            System build Version 2.0.0 • Evaluates defection risk profiles using real-time parameter scaling factors
           </div>
           <div>
-            Powered by Google AI Studio • Handcrafted Dark Visual Theme
+            Powered by Google AI Studio • Connected securely to Supabase REST engine
           </div>
         </footer>
 
       </div>
+
+      {/* Supabase Authentication Dialog Overlay */}
+      <AnimatePresence>
+        {authModalOpen && (
+          <AuthModal
+            onClose={() => setAuthModalOpen(false)}
+            onAuthSuccess={(sessionUser) => {
+              setUser(sessionUser);
+              setSyncNotice(`Authenticated successfully as ${sessionUser.email}. Connected to Cloud Storage.`);
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
