@@ -1,0 +1,6 @@
+{
+  "name": "Telecom Customer Churn Predictor",
+  "description": "An interactive, dark-themed telecom customer churn prediction dashboard that evaluates customer risk based on usage metrics and visualizes findings.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
